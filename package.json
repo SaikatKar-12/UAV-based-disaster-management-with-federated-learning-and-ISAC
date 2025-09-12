@@ -1,0 +1,35 @@
+{
+  "name": "uav-disaster-response-system",
+  "version": "1.0.0",
+  "description": "UAV Disaster Response System with ISAC Technology",
+  "main": "index.js",
+  "scripts": {
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:simulation": "cd js-simulation && npm install",
+    "install:all": "npm run install:backend && npm run install:frontend && npm run install:simulation",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm start",
+    "start:simulation": "cd js-simulation && node mainSimulation.js",
+    "build:frontend": "cd frontend && npm run build",
+    "build:production": "cd frontend && GENERATE_SOURCEMAP=false npm run build",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "test": "cd backend && npm test && cd ../frontend && npm test",
+    "deploy:render": "npm run install:all && npm run build:production"
+  },
+  "keywords": [
+    "uav",
+    "disaster-response",
+    "isac",
+    "react",
+    "nodejs",
+    "websocket"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
