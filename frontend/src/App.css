@@ -160,8 +160,9 @@
   background-color: #dbeafe;
   color: #1d4ed8;
   border: 1px solid #3b82f6;
-}/
-* Connection Status Styles */
+}
+
+/* Connection Status Styles */
 .connection-status {
   display: flex;
   align-items: center;
@@ -268,8 +269,9 @@
 .error-boundary p {
   margin: 0;
   font-size: 0.875rem;
-}/* Sm
-ooth transitions to prevent glitchy feels */
+}
+
+/* Smooth transitions to prevent glitchy feels */
 .card {
   transition: opacity 0.2s ease-in-out;
 }
@@ -308,8 +310,9 @@ ooth transitions to prevent glitchy feels */
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}/* 
-Home Page Specific Overrides */
+}
+
+/* Home Page Specific Overrides */
 .home-page * {
   box-sizing: border-box;
 }
