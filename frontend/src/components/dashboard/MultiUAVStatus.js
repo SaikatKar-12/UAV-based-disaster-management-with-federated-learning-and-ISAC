@@ -1,7 +1,9 @@
 import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 const MultiUAVStatus = ({ uavs, loading }) => {
+  const navigate = useNavigate();
   const getBatteryClass = (level) => {
     if (level >= 60) return 'high';
     if (level >= 30) return 'medium';
@@ -21,9 +23,9 @@ const MultiUAVStatus = ({ uavs, loading }) => {
   };
 
   const getISACIcon = (mode) => {
-    if (mode === 'good') return '🟢';
-    if (mode === 'medium') return '🟡';
-    return '🔴';
+    if (mode === 'good') return '';
+    if (mode === 'medium') return '';
+    return '';
   };
 
   const formatCoordinate = (coord) => {
@@ -79,9 +81,33 @@ const MultiUAVStatus = ({ uavs, loading }) => {
                 {uav.uavId}
               </h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.875rem' }}>
-                  {getISACIcon(uav.isacMode)} {uav.isacMode?.toUpperCase()}
-                </span>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.875rem' }}>
+                    {getISACIcon(uav.isacMode)} {uav.isacMode?.toUpperCase()}
+                  </span>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/uav/${uav.uavId}`);
+                    }}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.75rem',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <span>View Details</span>
+                    <span>→</span>
+                  </button>
+                </div>
               </div>
             </div>
 
