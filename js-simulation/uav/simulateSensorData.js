@@ -547,9 +547,9 @@ function calculateVisibility(environment) {
  * @returns {number} GPS coordinate
  */
 function convertToLatLng(positionM, coordType) {
-    // Base coordinates (example: Bangalore, India)
-    const baseLat = 12.9716;
-    const baseLng = 77.5946;
+    // Base coordinates (example: Kolkata, India)
+    const baseLat = 22.5726;
+    const baseLng = 88.3639;
     
     // Approximate conversion (1 degree ≈ 111 km)
     const metersPerDegree = 111000;

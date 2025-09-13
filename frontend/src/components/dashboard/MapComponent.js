@@ -66,16 +66,22 @@ const createCustomIcon = (color, size = [20, 20]) => {
       box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     "></div>`,
     iconSize: size,
-    iconAnchor: [size[0]/2, size[1]/2]
+    iconAnchor: [size[0] / 2, size[1] / 2]
   });
 };
 
-const createUAVIcon = () => {
+const createUAVIcon = (isacMode) => {
   if (!L) return null;
+  
+  let color = '#3b82f6'; // Default blue
+  if (isacMode === 'good') color = '#16a34a'; // Green
+  else if (isacMode === 'medium') color = '#d97706'; // Orange
+  else if (isacMode === 'weak') color = '#dc2626'; // Red
+  
   return L.divIcon({
     className: 'uav-marker',
     html: `<div style="
-      background-color: #3b82f6;
+      background-color: ${color};
       width: 16px;
       height: 16px;
       border: 2px solid white;
@@ -113,12 +119,12 @@ const MapUpdater = ({ uavStatus }) => {
     if (uavStatus.location && uavStatus.location.lat && uavStatus.location.lng) {
       const { lat, lng } = uavStatus.location;
       const prevLocation = prevLocationRef.current;
-      
+
       // Only update if location changed significantly (to avoid constant panning)
-      if (!prevLocation || 
-          Math.abs(prevLocation.lat - lat) > 0.001 || 
-          Math.abs(prevLocation.lng - lng) > 0.001) {
-        
+      if (!prevLocation ||
+        Math.abs(prevLocation.lat - lat) > 0.001 ||
+        Math.abs(prevLocation.lng - lng) > 0.001) {
+
         map.setView([lat, lng], map.getZoom(), { animate: true });
         prevLocationRef.current = { lat, lng };
       }
@@ -128,20 +134,18 @@ const MapUpdater = ({ uavStatus }) => {
   return null;
 };
 
-const MapComponent = ({ survivors, uavStatus, onSurvivorClick }) => {
+const MapComponent = ({ survivors, uavStatus, uavs, onSurvivorClick }) => {
   // If Leaflet components are not available, use fallback
   if (!MapContainer || !TileLayer || !Marker || !Popup || !L) {
     return <MapFallback survivors={survivors} uavStatus={uavStatus} />;
   }
 
-  // Default center (Bangalore, India)
-  const defaultCenter = [12.9716, 77.5946];
-  const mapCenter = uavStatus.location && uavStatus.location.lat 
-    ? [uavStatus.location.lat, uavStatus.location.lng] 
-    : defaultCenter;
+  // Default center (Kolkata, India) - Fixed center for multi-UAV view
+  const defaultCenter = [22.5726, 88.3639];
+  const mapCenter = defaultCenter; // Always use fixed center to avoid unnecessary movements
 
   // Base station location (origin)
-  const baseStationLocation = [12.9716, 77.5946];
+  const baseStationLocation = [22.5726, 88.3639];
 
   const getConfidenceColor = (confidence) => {
     if (confidence >= 0.8) return '#16a34a'; // Green for high confidence
@@ -177,13 +181,13 @@ const MapComponent = ({ survivors, uavStatus, onSurvivorClick }) => {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      
-      {/* Map updater component */}
-      <MapUpdater uavStatus={uavStatus} />
+
+      {/* Map updater component - Disabled for multi-UAV to prevent unnecessary movements */}
+      {/* <MapUpdater uavStatus={uavStatus} /> */}
 
       {/* Base Station Marker */}
-      <Marker 
-        position={baseStationLocation} 
+      <Marker
+        position={baseStationLocation}
         icon={createBaseStationIcon()}
       >
         <Popup>
@@ -195,11 +199,37 @@ const MapComponent = ({ survivors, uavStatus, onSurvivorClick }) => {
         </Popup>
       </Marker>
 
-      {/* UAV Marker */}
-      {uavStatus.location && uavStatus.location.lat && (
-        <Marker 
-          position={[uavStatus.location.lat, uavStatus.location.lng]} 
-          icon={createUAVIcon()}
+      {/* UAV Markers - Multiple UAVs */}
+      {uavs && uavs.map((uav) => (
+        uav.location && uav.location.lat && (
+          <Marker 
+            key={uav.uavId}
+            position={[uav.location.lat, uav.location.lng]} 
+            icon={createUAVIcon(uav.isacMode)}
+          >
+            <Popup>
+              <div>
+                <div className="popup-title">{uav.uavId}</div>
+                <div className="popup-info">Altitude: {uav.location.altitude}m</div>
+                <div className="popup-info">Battery: {uav.batteryLevel?.toFixed(1)}%</div>
+                <div className="popup-info">ISAC Mode: {uav.isacMode?.toUpperCase()}</div>
+                <div className="popup-info">Signal: {uav.signalStrength?.toFixed(1)}%</div>
+                <div className="popup-info">Data Rate: {uav.dataRate?.toFixed(1)} Mbps</div>
+                <div className="popup-info">Status: {uav.status?.toUpperCase()}</div>
+                {uav.lastUpdate && (
+                  <div className="popup-info">Last Update: {formatTimestamp(uav.lastUpdate)}</div>
+                )}
+              </div>
+            </Popup>
+          </Marker>
+        )
+      ))}
+
+      {/* Backward compatibility - Single UAV Marker */}
+      {(!uavs || uavs.length === 0) && uavStatus.location && uavStatus.location.lat && (
+        <Marker
+          position={[uavStatus.location.lat, uavStatus.location.lng]}
+          icon={createUAVIcon(uavStatus.isacMode)}
         >
           <Popup>
             <div>
@@ -236,7 +266,7 @@ const MapComponent = ({ survivors, uavStatus, onSurvivorClick }) => {
                 Coordinates: {survivor.coordinates.lat.toFixed(4)}, {survivor.coordinates.lng.toFixed(4)}
               </div>
               <div className="popup-info">
-                Confidence: 
+                Confidence:
                 <span className={`popup-confidence ${getConfidenceLabel(survivor.confidence).toLowerCase()}`}>
                   {(survivor.confidence * 100).toFixed(1)}% ({getConfidenceLabel(survivor.confidence)})
                 </span>

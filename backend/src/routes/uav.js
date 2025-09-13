@@ -156,7 +156,7 @@ router.get('/status', async (req, res) => {
         // Build UAV status response
         const uavStatus = {
             uavId: uavId,
-            location: latestTelemetry?.location || { lat: 12.9716, lng: 77.5946, altitude: 50 },
+            location: latestTelemetry?.location || { lat: 22.5726, lng: 88.3639, altitude: 50 },
             batteryLevel: latestTelemetry?.batteryLevel || 100,
             isacMode: isacStatus?.mode || 'good',
             signalStrength: isacStatus?.signalStrength || 100,

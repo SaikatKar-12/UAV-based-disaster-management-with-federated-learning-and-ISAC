@@ -54,9 +54,9 @@ class Application {
         // Logging
         this.app.use(morgan('combined'));
         
-        // Body parsing
-        this.app.use(express.json({ limit: '10mb' }));
-        this.app.use(express.urlencoded({ extended: true }));
+        // Body parsing - Increased limits for simulation data
+        this.app.use(express.json({ limit: '50mb' }));
+        this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
         
         // Make io available to routes
         this.app.use((req, res, next) => {

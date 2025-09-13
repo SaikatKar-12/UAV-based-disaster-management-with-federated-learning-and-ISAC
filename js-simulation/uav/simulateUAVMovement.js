@@ -46,14 +46,22 @@ function applyMovementPattern(uav, dt) {
             spiralRadius: 50,
             patternCenter: [uav.position[0], uav.position[1]],
             linearDirection: 1, // 1 for forward, -1 for backward
-            timeElapsed: 0
+            timeElapsed: 0,
+            altitudeDirection: 1 // For altitude changes
         };
     }
     
     uav.patternState.timeElapsed += dt;
     
-    // Default search pattern is spiral
-    const searchPattern = 'spiral';
+    // Different search patterns for different UAVs
+    let searchPattern = 'spiral'; // Default
+    if (uav.id === 'UAV-001') {
+        searchPattern = 'spiral';
+    } else if (uav.id === 'UAV-002') {
+        searchPattern = 'linear';
+    } else if (uav.id === 'UAV-003') {
+        searchPattern = 'random';
+    }
     
     switch (searchPattern) {
         case 'spiral':
@@ -68,6 +76,40 @@ function applyMovementPattern(uav, dt) {
         case 'grid':
             uav = applyGridPattern(uav, dt);
             break;
+    }
+    
+    // Add dynamic altitude changes
+    uav = applyAltitudeVariation(uav, dt);
+    
+    return uav;
+}
+
+/**
+ * Apply dynamic altitude variations
+ * @param {Object} uav - UAV object
+ * @param {number} dt - Time step in seconds
+ * @returns {Object} Updated UAV object
+ */
+function applyAltitudeVariation(uav, dt) {
+    // Different altitude patterns for different UAVs
+    if (uav.id === 'UAV-001') {
+        // Gentle sine wave altitude changes
+        const altitudeBase = 50;
+        const altitudeAmplitude = 15;
+        const altitudeFrequency = 0.05; // Hz
+        uav.position[2] = altitudeBase + altitudeAmplitude * Math.sin(uav.patternState.timeElapsed * altitudeFrequency * 2 * Math.PI);
+    } else if (uav.id === 'UAV-002') {
+        // Step-wise altitude changes
+        if (Math.floor(uav.patternState.timeElapsed / 30) % 2 === 0) {
+            uav.position[2] = 45;
+        } else {
+            uav.position[2] = 65;
+        }
+    } else if (uav.id === 'UAV-003') {
+        // Random altitude variations
+        const altitudeChange = (Math.random() - 0.5) * 2 * dt; // ±1 m/s altitude change
+        uav.position[2] += altitudeChange;
+        uav.position[2] = Math.max(30, Math.min(80, uav.position[2])); // Keep within bounds
     }
     
     return uav;

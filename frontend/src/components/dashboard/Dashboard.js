@@ -7,12 +7,13 @@ import MapComponent from './MapComponent';
 import SurvivorList from './SurvivorList';
 import ISACStatus from './ISACStatus';
 import UAVStatus from './UAVStatus';
+import MultiUAVStatus from './MultiUAVStatus';
 import MissionStats from './MissionStats';
 import ConnectionStatus from '../common/ConnectionStatus';
 import NotificationContainer from '../common/NotificationContainer';
 
 const Dashboard = () => {
-  const { survivors = [], uavStatus = {}, isacStatus = {}, missionStats = {}, loading = {}, actions } = useApp();
+  const { survivors = [], uavStatus = {}, uavs = [], isacStatus = {}, missionStats = {}, loading = {}, actions } = useApp();
   const { isConnected } = useWebSocket();
 
   // Defensive checks for required data
@@ -57,6 +58,7 @@ const Dashboard = () => {
           <MapComponent 
             survivors={safeSurvivors}
             uavStatus={safeUAVStatus}
+            uavs={uavs}
             onSurvivorClick={(survivor) => {
               console.log('Survivor clicked:', survivor);
             }}
@@ -74,11 +76,19 @@ const Dashboard = () => {
             uavStatus={safeUAVStatus}
           />
 
-          {/* UAV Status */}
-          <UAVStatus 
-            uavStatus={safeUAVStatus}
+          {/* Multi-UAV Status */}
+          <MultiUAVStatus 
+            uavs={uavs}
             loading={loading.uavStatus || false}
           />
+
+          {/* Single UAV Status (Backward Compatibility) */}
+          {(!uavs || uavs.length === 0) && (
+            <UAVStatus 
+              uavStatus={safeUAVStatus}
+              loading={loading.uavStatus || false}
+            />
+          )}
 
           {/* Mission Statistics */}
           <MissionStats 

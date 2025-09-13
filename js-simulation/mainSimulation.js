@@ -39,8 +39,8 @@ class UAVSimulator {
         // Initialize simulation environment
         this.environment = this.initializeEnvironment();
         
-        // Initialize UAV
-        this.uav = this.initializeUAV();
+        // Initialize UAVs
+        this.uavs = this.initializeUAVs();
         
         // Initialize base station
         this.baseStation = this.initializeBaseStation();
@@ -76,33 +76,37 @@ class UAVSimulator {
         }
         
         try {
-            // Update UAV position and movement
-            this.uav = updateUAVPosition(this.uav, this.config.dt);
-            
             // Update environmental conditions
             this.environment = updateEnvironment(this.environment, this.currentTime);
             
-            // Determine ISAC mode based on current conditions
-            const isacResult = determineISACMode(
-                this.uav.position, 
-                this.baseStation.position, 
-                this.environment
-            );
-            
-            // Simulate UAV sensor data collection
-            const sensorData = simulateSensorData(this.uav, this.environment, this.currentTime);
-            
-            // Process and filter data based on ISAC mode
-            const transmissionData = simulateDataTransmission(sensorData, isacResult.isacMode);
-            
-            // Prepare complete data package
-            const uavData = this.prepareUAVData(isacResult, transmissionData, sensorData);
-            
-            // Send data to backend (if available) or log locally
-            this.sendDataToBackend(uavData);
-            
-            // Display current status
-            this.displayStatus(isacResult, transmissionData.dataSizeBytes);
+            // Process each UAV
+            for (let i = 0; i < this.uavs.length; i++) {
+                const uav = this.uavs[i];
+                
+                // Update UAV position and movement
+                this.uavs[i] = updateUAVPosition(uav, this.config.dt);
+                
+                // Simulate battery drain
+                this.uavs[i].batteryLevel = Math.max(0, this.uavs[i].batteryLevel - (0.1 * this.config.dt));
+                
+                // Determine ISAC mode based on current conditions and target
+                const isacResult = this.determineUAVISACMode(this.uavs[i], this.baseStation.position, this.environment);
+                
+                // Simulate UAV sensor data collection
+                const sensorData = simulateSensorData(this.uavs[i], this.environment, this.currentTime);
+                
+                // Process and filter data based on ISAC mode
+                const transmissionData = simulateDataTransmission(sensorData, isacResult.isacMode);
+                
+                // Prepare complete data package
+                const uavData = this.prepareUAVData(this.uavs[i], isacResult, transmissionData, sensorData);
+                
+                // Send data to backend (if available) or log locally
+                this.sendDataToBackend(uavData);
+                
+                // Display current status
+                this.displayUAVStatus(this.uavs[i], isacResult, transmissionData.dataSizeBytes);
+            }
             
             // Update simulation time
             this.currentTime += this.config.dt;
@@ -131,22 +135,51 @@ class UAVSimulator {
     }
     
     /**
-     * Initialize UAV
-     * @returns {Object} UAV object
+     * Initialize multiple UAVs
+     * @returns {Array} Array of UAV objects
      */
-    initializeUAV() {
-        const uav = {
-            id: 'UAV-001',
-            position: [...this.config.uavStartPosition], // [x, y, altitude]
-            velocity: [...this.config.uavVelocity], // [vx, vy, vz]
-            batteryLevel: 100, // percentage
-            cameraActive: true,
-            aiModelVersion: '1.0',
-            patternState: null // Will be initialized by movement functions
-        };
+    initializeUAVs() {
+        const uavs = [
+            {
+                id: 'UAV-001',
+                position: [100, 100, 50], // [x, y, altitude]
+                velocity: [8, 3, 0], // [vx, vy, vz]
+                batteryLevel: 95,
+                cameraActive: true,
+                aiModelVersion: '1.0',
+                patternState: null,
+                targetSignalStrength: 85, // Target for good signal
+                isacMode: 'good'
+            },
+            {
+                id: 'UAV-002',
+                position: [300, 200, 45], // Different starting position
+                velocity: [6, -4, 0.5], // Different velocity pattern
+                batteryLevel: 78,
+                cameraActive: true,
+                aiModelVersion: '1.0',
+                patternState: null,
+                targetSignalStrength: 60, // Target for medium signal
+                isacMode: 'medium'
+            },
+            {
+                id: 'UAV-003',
+                position: [-100, 150, 55], // Different starting position
+                velocity: [-5, 2, -0.3], // Different velocity pattern
+                batteryLevel: 42,
+                cameraActive: true,
+                aiModelVersion: '1.0',
+                patternState: null,
+                targetSignalStrength: 25, // Target for weak signal
+                isacMode: 'weak'
+            }
+        ];
         
-        console.log(`UAV initialized at position [${uav.position.join(', ')}]`);
-        return uav;
+        uavs.forEach(uav => {
+            console.log(`${uav.id} initialized at position [${uav.position.join(', ')}] - ${uav.isacMode} signal`);
+        });
+        
+        return uavs;
     }
     
     /**
@@ -165,20 +198,65 @@ class UAVSimulator {
     }
     
     /**
+     * Determine ISAC mode for specific UAV based on target signal strength
+     * @param {Object} uav - UAV object
+     * @param {Array} baseStationPos - Base station position
+     * @param {Object} environment - Environment object
+     * @returns {Object} ISAC result
+     */
+    determineUAVISACMode(uav, baseStationPos, environment) {
+        // Calculate distance-based signal strength with some variation
+        const distance = Math.sqrt(
+            Math.pow(uav.position[0] - baseStationPos[0], 2) + 
+            Math.pow(uav.position[1] - baseStationPos[1], 2)
+        );
+        
+        // Add some realistic variation around target signal strength
+        const variation = (Math.random() - 0.5) * 20; // ±10% variation
+        let signalStrength = uav.targetSignalStrength + variation;
+        
+        // Ensure signal strength stays within reasonable bounds
+        signalStrength = Math.max(10, Math.min(95, signalStrength));
+        
+        // Determine mode based on signal strength
+        let isacMode = 'weak';
+        let dataRate = 10;
+        
+        if (signalStrength >= 70) {
+            isacMode = 'good';
+            dataRate = 45 + (signalStrength - 70) * 0.5;
+        } else if (signalStrength >= 45) {
+            isacMode = 'medium';
+            dataRate = 25 + (signalStrength - 45) * 0.8;
+        } else {
+            isacMode = 'weak';
+            dataRate = 10 + signalStrength * 0.3;
+        }
+        
+        return {
+            isacMode,
+            signalStrength,
+            dataRate: Math.round(dataRate * 10) / 10,
+            distance
+        };
+    }
+
+    /**
      * Prepare complete UAV data package
+     * @param {Object} uav - UAV object
      * @param {Object} isacResult - ISAC mode determination result
      * @param {Object} transmissionData - Filtered transmission data
      * @param {Object} sensorData - Raw sensor data
      * @returns {Object} Complete UAV data package
      */
-    prepareUAVData(isacResult, transmissionData, sensorData) {
+    prepareUAVData(uav, isacResult, transmissionData, sensorData) {
         return {
             timestamp: new Date().toISOString(),
-            uavId: this.uav.id,
+            uavId: uav.id,
             location: {
-                lat: this.convertToLatLng(this.uav.position[0], 'lat'),
-                lng: this.convertToLatLng(this.uav.position[1], 'lng'),
-                altitude: this.uav.position[2]
+                lat: this.convertToLatLng(uav.position[0], 'lat'),
+                lng: this.convertToLatLng(uav.position[1], 'lng'),
+                altitude: uav.position[2]
             },
             isacMode: isacResult.isacMode,
             signalStrength: isacResult.signalStrength,
@@ -190,9 +268,9 @@ class UAVSimulator {
             dataSizeBytes: transmissionData.dataSizeBytes,
             transmissionMode: transmissionData.isacMode,
             uavStatus: {
-                batteryLevel: this.uav.batteryLevel,
-                cameraActive: this.uav.cameraActive,
-                aiModelVersion: this.uav.aiModelVersion
+                batteryLevel: uav.batteryLevel,
+                cameraActive: uav.cameraActive,
+                aiModelVersion: uav.aiModelVersion
             },
             environmentalData: transmissionData.environmentalData || null
         };
@@ -258,18 +336,20 @@ class UAVSimulator {
     }
     
     /**
-     * Display current simulation status
+     * Display current UAV status
+     * @param {Object} uav - UAV object
      * @param {Object} isacResult - ISAC mode determination result
      * @param {number} dataSizeBytes - Size of transmitted data in bytes
      */
-    displayStatus(isacResult, dataSizeBytes) {
+    displayUAVStatus(uav, isacResult, dataSizeBytes) {
         const statusSymbol = '✓'; // Always success in simulation
         
         console.log(
             `[${this.currentTime.toString().padStart(6, ' ')}s] ` +
-            `UAV: [${this.uav.position[0].toFixed(1).padStart(6, ' ')}, ${this.uav.position[1].toFixed(1).padStart(6, ' ')}] | ` +
+            `${uav.id}: [${uav.position[0].toFixed(1).padStart(6, ' ')}, ${uav.position[1].toFixed(1).padStart(6, ' ')}, ${uav.position[2].toFixed(1).padStart(4, ' ')}] | ` +
             `ISAC: ${isacResult.isacMode.toUpperCase().padEnd(6, ' ')} | ` +
             `Signal: ${isacResult.signalStrength.toFixed(1).padStart(5, ' ')}% | ` +
+            `Battery: ${uav.batteryLevel.toFixed(1).padStart(5, ' ')}% | ` +
             `TX: ${statusSymbol}`
         );
     }
@@ -281,9 +361,9 @@ class UAVSimulator {
      * @returns {number} GPS coordinate
      */
     convertToLatLng(positionM, coordType) {
-        // Base coordinates (example: Bangalore, India)
-        const baseLat = 12.9716;
-        const baseLng = 77.5946;
+        // Base coordinates (example: Kolkata, India)
+        const baseLat = 22.5726;
+        const baseLng = 88.3639;
         
         // Approximate conversion (1 degree ≈ 111 km)
         const metersPerDegree = 111000;
@@ -308,8 +388,12 @@ class UAVSimulator {
             currentTime: this.currentTime,
             totalTime: this.config.simulationTime,
             progress: (this.currentTime / this.config.simulationTime) * 100,
-            uavPosition: this.uav ? [...this.uav.position] : null,
-            batteryLevel: this.uav ? this.uav.batteryLevel : null
+            uavs: this.uavs ? this.uavs.map(uav => ({
+                id: uav.id,
+                position: [...uav.position],
+                batteryLevel: uav.batteryLevel,
+                isacMode: uav.isacMode
+            })) : []
         };
     }
 }
