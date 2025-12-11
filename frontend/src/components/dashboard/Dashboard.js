@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import Header from '../common/Header';
@@ -6,46 +6,68 @@ import Navigation from '../common/Navigation';
 import MapComponent from './MapComponent';
 import SurvivorList from './SurvivorList';
 import ISACStatus from './ISACStatus';
-import UAVStatus from './UAVStatus';
 import MultiUAVStatus from './MultiUAVStatus';
 import MissionStats from './MissionStats';
 import ConnectionStatus from '../common/ConnectionStatus';
 import NotificationContainer from '../common/NotificationContainer';
 
 const Dashboard = () => {
-  const { survivors = [], uavStatus = {}, uavs = [], isacStatus = {}, missionStats = {}, loading = {}, actions } = useApp();
-  const { isConnected } = useWebSocket();
+  const { survivors = [], actions } = useApp();
+  const { 
+    isConnected, 
+    uavs = [], 
+    selectedUAV,
+    subscribe
+  } = useWebSocket();
 
   // Defensive checks for required data
   const safeSurvivors = Array.isArray(survivors) ? survivors : [];
-  const safeUAVStatus = uavStatus || {};
-  const safeISACStatus = isacStatus || {};
-  const safeMissionStats = missionStats || {};
 
+  // Format UAVs for the map component
+  const uavsForMap = useMemo(() => {
+    return Object.values(uavs).map(uav => ({
+      ...uav,
+      location: uav.position ? {
+        lat: uav.position[0] || 0,
+        lng: uav.position[1] || 0,
+        alt: uav.position[2] || 0
+      } : { lat: 0, lng: 0, alt: 0 }
+    }));
+  }, [uavs]);
+
+  // Get the selected UAV status
+  const selectedUAVStatus = useMemo(() => {
+    return selectedUAV ? uavs[selectedUAV] : null;
+  }, [selectedUAV, uavs]);
+
+  // Calculate mission stats from UAV data
+  const missionStats = useMemo(() => {
+    const connectedUAVs = Object.values(uavs).filter(uav => uav.connected);
+    return {
+      activeUAVs: connectedUAVs.length,
+      totalUAVs: Object.keys(uavs).length,
+      avgBattery: connectedUAVs.reduce((sum, uav) => sum + (uav.battery || 0), 0) / (connectedUAVs.length || 1),
+      lastUpdate: new Date().toISOString()
+    };
+  }, [uavs]);
+
+  // Load initial survivors data
   useEffect(() => {
-    // Load initial data once
     actions.loadSurvivors();
-    actions.loadUAVStatus();
-  }, []);
+  }, [actions]);
 
-  // Simple polling only when WebSocket is disconnected
+  // Subscribe to UAV status updates
   useEffect(() => {
-    if (isConnected) {
-      // WebSocket is handling updates, no need to poll
-      return;
-    }
+    if (!isConnected) return;
 
-    // Only poll when disconnected, with a simple 10-second interval
-    // Use showLoading=false to prevent loading states during polling
-    const pollInterval = setInterval(() => {
-      console.log('📡 Polling for updates (WebSocket disconnected)');
-      actions.loadUAVStatus(false); // Don't show loading spinner for polling
-    }, 10000);
+    const unsubscribe = subscribe('uav_status', (data) => {
+      console.log('UAV status update:', data);
+    });
 
     return () => {
-      clearInterval(pollInterval);
+      if (unsubscribe) unsubscribe();
     };
-  }, [isConnected, actions]);
+  }, [isConnected, subscribe]);
 
   return (
     <div className="app">
@@ -57,8 +79,8 @@ const Dashboard = () => {
         <div className="map-section">
           <MapComponent 
             survivors={safeSurvivors}
-            uavStatus={safeUAVStatus}
-            uavs={uavs}
+            uavStatus={selectedUAVStatus}
+            uavs={uavsForMap}
             onSurvivorClick={(survivor) => {
               console.log('Survivor clicked:', survivor);
             }}
@@ -72,34 +94,26 @@ const Dashboard = () => {
 
           {/* ISAC Status */}
           <ISACStatus 
-            isacStatus={safeISACStatus}
-            uavStatus={safeUAVStatus}
+            isacStatus={selectedUAVStatus?.isacMode || 'disconnected'}
+            uavStatus={selectedUAVStatus}
           />
 
           {/* Multi-UAV Status */}
           <MultiUAVStatus 
-            uavs={uavs}
-            loading={loading.uavStatus || false}
+            uavs={uavsForMap}
+            loading={!isConnected}
           />
-
-          {/* Single UAV Status (Backward Compatibility) */}
-          {(!uavs || uavs.length === 0) && (
-            <UAVStatus 
-              uavStatus={safeUAVStatus}
-              loading={loading.uavStatus || false}
-            />
-          )}
 
           {/* Mission Statistics */}
           <MissionStats 
-            stats={safeMissionStats}
+            stats={missionStats}
             survivorsCount={safeSurvivors.length}
           />
 
           {/* Survivor List */}
           <SurvivorList 
             survivors={safeSurvivors}
-            loading={loading.survivors || false}
+            loading={false}
             onMarkAsRescued={actions?.markSurvivorAsRescued}
           />
         </div>

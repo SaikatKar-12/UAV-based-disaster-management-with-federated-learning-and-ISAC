@@ -1,4 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useMemo } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // Fallback component if Leaflet fails to load
 const MapFallback = ({ survivors, uavStatus }) => (
@@ -22,20 +24,21 @@ const MapFallback = ({ survivors, uavStatus }) => (
   </div>
 );
 
-// Try to import Leaflet components with error handling
-let MapContainer, TileLayer, Marker, Popup, useMap, L;
+// Import Leaflet components with error handling
+let MapContainer, TileLayer, Marker, Popup;
 
 try {
   const leaflet = require('react-leaflet');
-  MapContainer = leaflet.MapContainer;
-  TileLayer = leaflet.TileLayer;
-  Marker = leaflet.Marker;
-  Popup = leaflet.Popup;
-  useMap = leaflet.useMap;
+  ({ MapContainer, TileLayer, Marker, Popup } = leaflet);
+  // Re-import L to ensure it's available
   L = require('leaflet');
   require('leaflet/dist/leaflet.css');
 } catch (error) {
   console.warn('Leaflet not available, using fallback map component');
+  // Provide fallback components in development
+  if (process.env.NODE_ENV === 'development') {
+    console.error('Leaflet error:', error);
+  }
 }
 
 // Fix for default markers in react-leaflet (only if L is available)
@@ -52,6 +55,48 @@ if (L && L.Icon && L.Icon.Default) {
   }
 }
 
+// Custom UAV icon
+const createUAVIcon = (status = 'idle', isSelected = false) => {
+  const color = {
+    idle: '#6b7280',
+    connected: '#3b82f6',
+    moving: '#10b981',
+    landing: '#f59e0b',
+    emergency: '#ef4444',
+    disconnected: '#9ca3af'
+  }[status] || '#6b7280';
+
+  return L.divIcon({
+    html: `
+      <div style="
+        width: 24px;
+        height: 24px;
+        background: ${color};
+        border: 2px solid ${isSelected ? '#ff0' : '#fff'};
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      ">
+        <div style="
+          width: 12px;
+          height: 12px;
+          background: ${status === 'connected' || status === 'moving' ? '#10b981' : '#ef4444'};
+          border-radius: 50%;
+          border: 2px solid white;
+        "></div>
+      </div>
+    `,
+    className: 'uav-marker',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+  });
+};
+
 // Custom marker icons (only if L is available)
 const createCustomIcon = (color, size = [20, 20]) => {
   if (!L) return null;
@@ -67,29 +112,6 @@ const createCustomIcon = (color, size = [20, 20]) => {
     "></div>`,
     iconSize: size,
     iconAnchor: [size[0] / 2, size[1] / 2]
-  });
-};
-
-const createUAVIcon = (isacMode) => {
-  if (!L) return null;
-  
-  let color = '#3b82f6'; // Default blue
-  if (isacMode === 'good') color = '#16a34a'; // Green
-  else if (isacMode === 'medium') color = '#d97706'; // Orange
-  else if (isacMode === 'weak') color = '#dc2626'; // Red
-  
-  return L.divIcon({
-    className: 'uav-marker',
-    html: `<div style="
-      background-color: ${color};
-      width: 16px;
-      height: 16px;
-      border: 2px solid white;
-      transform: rotate(45deg);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    "></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
   });
 };
 
@@ -110,42 +132,40 @@ const createBaseStationIcon = () => {
   });
 };
 
-// Component to update map view when UAV moves
-const MapUpdater = ({ uavStatus }) => {
-  const map = useMap();
-  const prevLocationRef = useRef();
-
-  useEffect(() => {
-    if (uavStatus.location && uavStatus.location.lat && uavStatus.location.lng) {
-      const { lat, lng } = uavStatus.location;
-      const prevLocation = prevLocationRef.current;
-
-      // Only update if location changed significantly (to avoid constant panning)
-      if (!prevLocation ||
-        Math.abs(prevLocation.lat - lat) > 0.001 ||
-        Math.abs(prevLocation.lng - lng) > 0.001) {
-
-        map.setView([lat, lng], map.getZoom(), { animate: true });
-        prevLocationRef.current = { lat, lng };
-      }
-    }
-  }, [uavStatus.location, map]);
-
-  return null;
+const UAVMarkers = ({ uavs, selectedUAV, onUAVClick }) => {
+  return Object.entries(uavs).map(([id, uav]) => (
+    <Marker
+      key={id}
+      position={[uav.location?.lat || 0, uav.location?.lng || 0]}
+      icon={createUAVIcon(uav.status, selectedUAV === id)}
+      eventHandlers={{
+        click: () => onUAVClick && onUAVClick(id)
+      }}
+    >
+      <Popup>
+        <div>
+          <h4>UAV {id}</h4>
+          <p>Status: {uav.status || 'unknown'}</p>
+          <p>Battery: {uav.batteryLevel?.toFixed(1) || 'N/A'}%</p>
+          <p>
+            Position: {uav.location?.lat?.toFixed(4) || 'N/A'}, {uav.location?.lng?.toFixed(4) || 'N/A'}
+          </p>
+          <p>Altitude: {uav.location?.altitude?.toFixed(1) || '0'}m</p>
+        </div>
+      </Popup>
+    </Marker>
+  ));
 };
 
-const MapComponent = ({ survivors, uavStatus, uavs, onSurvivorClick }) => {
+const MapComponent = ({ survivors, uavStatus, uavs, onSurvivorClick, onUAVSelect }) => {
+  // Move all hooks to the top, before any conditional returns
+  const defaultCenter = useMemo(() => [22.5726, 88.3639], []);
+  const baseStationLocation = useMemo(() => [22.5726, 88.3639], []);
+
   // If Leaflet components are not available, use fallback
   if (!MapContainer || !TileLayer || !Marker || !Popup || !L) {
     return <MapFallback survivors={survivors} uavStatus={uavStatus} />;
   }
-
-  // Default center (Kolkata, India) - Fixed center for multi-UAV view
-  const defaultCenter = [22.5726, 88.3639];
-  const mapCenter = defaultCenter; // Always use fixed center to avoid unnecessary movements
-
-  // Base station location (origin)
-  const baseStationLocation = [22.5726, 88.3639];
 
   const getConfidenceColor = (confidence) => {
     if (confidence >= 0.8) return '#16a34a'; // Green for high confidence
@@ -169,118 +189,86 @@ const MapComponent = ({ survivors, uavStatus, uavs, onSurvivorClick }) => {
     return new Date(timestamp).toLocaleTimeString();
   };
 
+  const handleUAVClick = (uavId) => {
+    if (onUAVSelect) {
+      onUAVSelect(uavId);
+    }
+  };
+
   return (
-    <MapContainer
-      center={mapCenter}
-      zoom={15}
-      style={{ height: '100%', width: '100%' }}
-      zoomControl={true}
-      scrollWheelZoom={true}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-
-      {/* Map updater component - Disabled for multi-UAV to prevent unnecessary movements */}
-      {/* <MapUpdater uavStatus={uavStatus} /> */}
-
-      {/* Base Station Marker */}
-      <Marker
-        position={baseStationLocation}
-        icon={createBaseStationIcon()}
+    <div style={{ width: '100%', height: '100%' }}>
+      <MapContainer
+        center={defaultCenter}
+        zoom={15}
+        style={{ width: '100%', height: '100%' }}
+        zoomControl={true}
+        scrollWheelZoom={true}
       >
-        <Popup>
-          <div>
-            <div className="popup-title">Base Station</div>
-            <div className="popup-info">Communication Hub</div>
-            <div className="popup-info">Coordinates: {baseStationLocation[0].toFixed(4)}, {baseStationLocation[1].toFixed(4)}</div>
-          </div>
-        </Popup>
-      </Marker>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
 
-      {/* UAV Markers - Multiple UAVs */}
-      {uavs && uavs.map((uav) => (
-        uav.location && uav.location.lat && (
-          <Marker 
-            key={uav.uavId}
-            position={[uav.location.lat, uav.location.lng]} 
-            icon={createUAVIcon(uav.isacMode)}
+        {/* Base Station Marker */}
+        <Marker
+          position={baseStationLocation}
+          icon={createBaseStationIcon()}
+        >
+          <Popup>
+            <div>
+              <div className="popup-title">Base Station</div>
+              <div className="popup-info">Communication Hub</div>
+              <div className="popup-info">Coordinates: {baseStationLocation[0].toFixed(4)}, {baseStationLocation[1].toFixed(4)}</div>
+            </div>
+          </Popup>
+        </Marker>
+
+        {/* UAV Markers - Multiple UAVs */}
+        <UAVMarkers 
+          uavs={uavs} 
+          selectedUAV={uavStatus?.uavId}
+          onUAVClick={handleUAVClick} 
+        />
+
+        {/* Map updater component - Disabled for multi-UAV to prevent unnecessary movements */}
+        {/* <MapUpdater uavStatus={uavStatus} /> */}
+
+        {/* Survivor Markers */}
+        {survivors.map((survivor) => (
+          <Marker
+            key={survivor.id}
+            position={[survivor.coordinates.lat, survivor.coordinates.lng]}
+            icon={getSurvivorIcon(survivor)}
+            eventHandlers={{
+              click: () => onSurvivorClick && onSurvivorClick(survivor)
+            }}
           >
             <Popup>
               <div>
-                <div className="popup-title">{uav.uavId}</div>
-                <div className="popup-info">Altitude: {uav.location.altitude}m</div>
-                <div className="popup-info">Battery: {uav.batteryLevel?.toFixed(1)}%</div>
-                <div className="popup-info">ISAC Mode: {uav.isacMode?.toUpperCase()}</div>
-                <div className="popup-info">Signal: {uav.signalStrength?.toFixed(1)}%</div>
-                <div className="popup-info">Data Rate: {uav.dataRate?.toFixed(1)} Mbps</div>
-                <div className="popup-info">Status: {uav.status?.toUpperCase()}</div>
-                {uav.lastUpdate && (
-                  <div className="popup-info">Last Update: {formatTimestamp(uav.lastUpdate)}</div>
+                <div className="popup-title">
+                  {survivor.status === 'rescued' ? '✅ Rescued Survivor' : '🆘 Survivor Detected'}
+                </div>
+                <div className="popup-info">ID: {survivor.id}</div>
+                <div className="popup-info">
+                  Coordinates: {survivor.coordinates.lat.toFixed(4)}, {survivor.coordinates.lng.toFixed(4)}
+                </div>
+                <div className="popup-info">
+                  Confidence:
+                  <span className={`popup-confidence ${getConfidenceLabel(survivor.confidence).toLowerCase()}`}>
+                    {(survivor.confidence * 100).toFixed(1)}% ({getConfidenceLabel(survivor.confidence)})
+                  </span>
+                </div>
+                <div className="popup-info">Detected by: {survivor.uavId}</div>
+                <div className="popup-info">Time: {formatTimestamp(survivor.timestamp)}</div>
+                {survivor.additionalInfo && (
+                  <div className="popup-info">Info: {survivor.additionalInfo}</div>
                 )}
               </div>
             </Popup>
           </Marker>
-        )
-      ))}
-
-      {/* Backward compatibility - Single UAV Marker */}
-      {(!uavs || uavs.length === 0) && uavStatus.location && uavStatus.location.lat && (
-        <Marker
-          position={[uavStatus.location.lat, uavStatus.location.lng]}
-          icon={createUAVIcon(uavStatus.isacMode)}
-        >
-          <Popup>
-            <div>
-              <div className="popup-title">{uavStatus.uavId}</div>
-              <div className="popup-info">Altitude: {uavStatus.location.altitude}m</div>
-              <div className="popup-info">Battery: {uavStatus.batteryLevel?.toFixed(1)}%</div>
-              <div className="popup-info">ISAC Mode: {uavStatus.isacMode?.toUpperCase()}</div>
-              <div className="popup-info">Signal: {uavStatus.signalStrength?.toFixed(1)}%</div>
-              {uavStatus.lastUpdate && (
-                <div className="popup-info">Last Update: {formatTimestamp(uavStatus.lastUpdate)}</div>
-              )}
-            </div>
-          </Popup>
-        </Marker>
-      )}
-
-      {/* Survivor Markers */}
-      {survivors.map((survivor) => (
-        <Marker
-          key={survivor.id}
-          position={[survivor.coordinates.lat, survivor.coordinates.lng]}
-          icon={getSurvivorIcon(survivor)}
-          eventHandlers={{
-            click: () => onSurvivorClick && onSurvivorClick(survivor)
-          }}
-        >
-          <Popup>
-            <div>
-              <div className="popup-title">
-                {survivor.status === 'rescued' ? '✅ Rescued Survivor' : '🆘 Survivor Detected'}
-              </div>
-              <div className="popup-info">ID: {survivor.id}</div>
-              <div className="popup-info">
-                Coordinates: {survivor.coordinates.lat.toFixed(4)}, {survivor.coordinates.lng.toFixed(4)}
-              </div>
-              <div className="popup-info">
-                Confidence:
-                <span className={`popup-confidence ${getConfidenceLabel(survivor.confidence).toLowerCase()}`}>
-                  {(survivor.confidence * 100).toFixed(1)}% ({getConfidenceLabel(survivor.confidence)})
-                </span>
-              </div>
-              <div className="popup-info">Detected by: {survivor.uavId}</div>
-              <div className="popup-info">Time: {formatTimestamp(survivor.timestamp)}</div>
-              {survivor.additionalInfo && (
-                <div className="popup-info">Info: {survivor.additionalInfo}</div>
-              )}
-            </div>
-          </Popup>
-        </Marker>
-      ))}
-    </MapContainer>
+        ))}
+      </MapContainer>
+    </div>
   );
 };
 

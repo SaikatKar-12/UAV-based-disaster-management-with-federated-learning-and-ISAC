@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
-const ISACStatus = ({ isacStatus, uavStatus }) => {
+const ISACStatus = ({ isacStatus = {}, uavStatus = null }) => {
   const getISACModeClass = (mode) => {
     switch (mode?.toLowerCase()) {
       case 'good': return 'good';
@@ -12,30 +12,35 @@ const ISACStatus = ({ isacStatus, uavStatus }) => {
   };
 
   const getISACModeLabel = (mode) => {
-    switch (mode?.toLowerCase()) {
+    if (!mode) return 'Disconnected';
+    switch (mode.toLowerCase()) {
       case 'good': return 'Good Network';
       case 'medium': return 'Medium Network';
       case 'weak': return 'Weak Network';
+      case 'disconnected': return 'Disconnected';
       default: return 'Unknown';
     }
   };
 
   const getSignalStrengthColor = (strength) => {
+    if (strength === undefined || strength === null) return '#9ca3af';
     if (strength >= 75) return '#16a34a';
     if (strength >= 40) return '#d97706';
     return '#dc2626';
   };
 
   const getDataRateUnit = (dataRate) => {
+    if (dataRate === undefined || dataRate === null) return '0 Mbps';
     if (dataRate >= 1000) {
       return `${(dataRate / 1000).toFixed(1)} Gbps`;
     }
-    return `${dataRate?.toFixed(1)} Mbps`;
+    return `${dataRate.toFixed(1)} Mbps`;
   };
 
-  const currentMode = isacStatus.mode || uavStatus.isacMode || 'weak';
-  const currentSignalStrength = isacStatus.signalStrength ?? uavStatus.signalStrength ?? 0;
-  const currentDataRate = isacStatus.dataRate ?? uavStatus.dataRate ?? 0;
+  // Safely get values with null checks
+  const currentMode = isacStatus?.mode || uavStatus?.isacMode || 'disconnected';
+  const currentSignalStrength = isacStatus?.signalStrength ?? uavStatus?.signalStrength ?? 0;
+  const currentDataRate = isacStatus?.dataRate ?? uavStatus?.dataRate ?? 0;
 
   return (
     <div className="card">
@@ -121,14 +126,14 @@ const ISACStatus = ({ isacStatus, uavStatus }) => {
       </div>
 
       {/* Last Update */}
-      {(isacStatus.lastUpdate || uavStatus.lastUpdate) && (
+      {(isacStatus?.lastUpdate || uavStatus?.lastUpdate) && (
         <div style={{ 
           marginTop: '1rem', 
           fontSize: '0.75rem', 
           color: '#6b7280',
           textAlign: 'center'
         }}>
-          Last updated {formatDistanceToNow(new Date(isacStatus.lastUpdate || uavStatus.lastUpdate), { addSuffix: true })}
+          Last updated {formatDistanceToNow(new Date(isacStatus?.lastUpdate || uavStatus?.lastUpdate), { addSuffix: true })}
         </div>
       )}
 

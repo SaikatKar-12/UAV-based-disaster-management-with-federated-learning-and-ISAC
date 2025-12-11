@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
 const WebSocketContext = createContext();
@@ -15,6 +15,36 @@ export const WebSocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
+  const [uavs, setUAVs] = useState({});
+  const [selectedUAV, setSelectedUAV] = useState(null);
+  const [eventListeners, setEventListeners] = useState({});
+
+  // Function to send commands to UAVs
+  const sendCommand = useCallback((uavId, command, params = {}) => {
+    if (socket && isConnected) {
+      socket.emit('command', {
+        target: uavId,
+        command,
+        params,
+        timestamp: new Date().toISOString()
+      });
+      return true;
+    }
+    return false;
+  }, [socket, isConnected]);
+
+  // Function to update UAV status
+  const updateUAVStatus = useCallback((uavId, status) => {
+    setUAVs(prevUAVs => ({
+      ...prevUAVs,
+      [uavId]: {
+        ...prevUAVs[uavId],
+        ...status,
+        lastUpdate: new Date().toISOString(),
+        connected: true
+      }
+    }));
+  }, []);
 
   useEffect(() => {
     // Initialize socket connection
@@ -47,52 +77,150 @@ export const WebSocketProvider = ({ children }) => {
       setIsConnected(false);
     });
 
+    // Handle UAV connection events
+    newSocket.on('uav_connected', (data) => {
+      console.log(`UAV connected: ${data.uavId}`);
+      updateUAVStatus(data.uavId, {
+        id: data.uavId,
+        connected: true,
+        status: 'connected',
+        position: [0, 0, 0],
+        velocity: [0, 0, 0],
+        battery: 100
+      });
+      
+      // Select the first connected UAV by default
+      setSelectedUAV(prev => prev || data.uavId);
+    });
+
+    // Handle UAV status updates from backend
+    newSocket.on('uav_status_update', (data) => {
+      console.log('Received UAV status update:', data);
+      
+      // Process and normalize the status data
+      const statusUpdate = {
+        ...data,
+        // Ensure required fields with defaults
+        uavId: data.uavId,
+        position: data.position || [0, 0, 0],
+        battery: data.battery ?? 0,
+        status: data.status || 'connected',
+        signalStrength: data.signalStrength ?? 0,
+        dataRate: data.dataRate ?? 0,
+        isacMode: data.isacMode || 'weak',
+        velocity: data.velocity || [0, 0, 0],
+        lastUpdate: new Date().toISOString()
+      };
+
+      console.log('Processed UAV status:', statusUpdate);
+      
+      // Update the UAV status in state
+      setUAVs(prevUAVs => ({
+        ...prevUAVs,
+        [statusUpdate.uavId]: {
+          ...prevUAVs[statusUpdate.uavId],
+          ...statusUpdate,
+          connected: true
+        }
+      }));
+    });
+
+    // Handle UAV disconnection
+    newSocket.on('uav_disconnected', (data) => {
+      console.log(`UAV disconnected: ${data.uavId}`);
+      setUAVs(prevUAVs => {
+        const updated = { ...prevUAVs };
+        if (updated[data.uavId]) {
+          updated[data.uavId] = {
+            ...updated[data.uavId],
+            connected: false,
+            status: 'disconnected'
+          };
+        }
+        return updated;
+      });
+    });
+
+    // Reconnection handlers
     newSocket.on('reconnect', (attemptNumber) => {
-      console.log(`🔄 WebSocket reconnected after ${attemptNumber} attempts`);
+      console.log(`🔁 WebSocket reconnected after ${attemptNumber} attempts`);
       setIsConnected(true);
       setConnectionError(null);
     });
 
+    newSocket.on('reconnect_attempt', (attemptNumber) => {
+      console.log(`🔁 Attempting to reconnect (${attemptNumber})...`);
+    });
+
     newSocket.on('reconnect_error', (error) => {
       console.error('WebSocket reconnection error:', error);
-      setConnectionError(error.message);
+      setConnectionError(`Reconnection failed: ${error.message}`);
     });
 
     newSocket.on('reconnect_failed', () => {
-      console.error('WebSocket reconnection failed');
+      console.error('WebSocket reconnection failed after maximum attempts');
       setConnectionError('Failed to reconnect to server');
     });
 
     setSocket(newSocket);
 
-    // Cleanup on unmount
+    // Cleanup function
     return () => {
-      newSocket.close();
+      console.log('Cleaning up WebSocket connection');
+      newSocket.disconnect();
     };
-  }, []);
+  }, [updateUAVStatus]);
 
-  // Subscribe to specific events
-  const subscribe = (event, callback) => {
-    if (socket) {
-      socket.on(event, callback);
-      return () => socket.off(event, callback);
-    }
-    return () => {};
-  };
+  // Subscribe to WebSocket events
+  const subscribe = useCallback((event, callback) => {
+    if (!socket) return () => {};
+    
+    // Add the event listener
+    socket.on(event, callback);
+    
+    // Store the listener for cleanup
+    setEventListeners(prev => ({
+      ...prev,
+      [event]: [...(prev[event] || []), callback]
+    }));
+    
+    // Return unsubscribe function
+    return () => {
+      if (socket) {
+        socket.off(event, callback);
+      }
+      setEventListeners(prev => ({
+        ...prev,
+        [event]: (prev[event] || []).filter(cb => cb !== callback)
+      }));
+    };
+  }, [socket]);
 
-  // Emit events
-  const emit = (event, data) => {
-    if (socket && isConnected) {
-      socket.emit(event, data);
-    }
-  };
+  // Clean up all event listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (socket) {
+        // Remove all event listeners
+        Object.entries(eventListeners).forEach(([event, callbacks]) => {
+          callbacks.forEach(callback => {
+            socket.off(event, callback);
+          });
+        });
+      }
+    };
+  }, [socket, eventListeners]);
 
+  // Context value
   const value = {
     socket,
     isConnected,
     connectionError,
-    subscribe,
-    emit
+    uavs,
+    selectedUAV,
+    setSelectedUAV,
+    sendCommand,
+    updateUAVStatus,
+    subscribe
   };
 
   return (
