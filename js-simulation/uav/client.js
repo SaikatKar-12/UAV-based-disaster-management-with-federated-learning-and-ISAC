@@ -161,9 +161,12 @@ class UAVClient {
       this.position[2] += this.velocity[2] * timeStep;
     }
 
-    // Simulate battery drain (faster when moving)
+    // Simulate battery drain (faster when moving), but more slowly overall
+    // Previously: moving 0.1% per 100ms (3.6% per minute), idle 0.01% per 100ms
+    // Now: moving 0.02% per 100ms (~0.72% per minute), idle 0.002% per 100ms
     const isMoving = this.velocity.some(v => Math.abs(v) > 0.1);
-    this.battery = Math.max(0, this.battery - (isMoving ? 0.1 : 0.01));
+    const drainPerTick = isMoving ? 0.02 : 0.002;
+    this.battery = Math.max(0, this.battery - drainPerTick);
 
     // Emit status update
     this.socket.emit('uav_status', {

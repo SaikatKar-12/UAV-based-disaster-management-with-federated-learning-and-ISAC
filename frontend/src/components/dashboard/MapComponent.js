@@ -17,7 +17,7 @@ const MapFallback = ({ survivors, uavStatus }) => (
     <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🗺️</div>
     <h3>Map View</h3>
     <p>UAV Position: {uavStatus?.location?.lat?.toFixed(4)}, {uavStatus?.location?.lng?.toFixed(4)}</p>
-    <p>Survivors Detected: {survivors?.length || 0}</p>
+
     <p style={{ fontSize: '0.875rem', marginTop: '1rem', textAlign: 'center' }}>
       Interactive map will load when all dependencies are available
     </p>
@@ -233,40 +233,7 @@ const MapComponent = ({ survivors, uavStatus, uavs, onSurvivorClick, onUAVSelect
         {/* Map updater component - Disabled for multi-UAV to prevent unnecessary movements */}
         {/* <MapUpdater uavStatus={uavStatus} /> */}
 
-        {/* Survivor Markers */}
-        {survivors.map((survivor) => (
-          <Marker
-            key={survivor.id}
-            position={[survivor.coordinates.lat, survivor.coordinates.lng]}
-            icon={getSurvivorIcon(survivor)}
-            eventHandlers={{
-              click: () => onSurvivorClick && onSurvivorClick(survivor)
-            }}
-          >
-            <Popup>
-              <div>
-                <div className="popup-title">
-                  {survivor.status === 'rescued' ? '✅ Rescued Survivor' : '🆘 Survivor Detected'}
-                </div>
-                <div className="popup-info">ID: {survivor.id}</div>
-                <div className="popup-info">
-                  Coordinates: {survivor.coordinates.lat.toFixed(4)}, {survivor.coordinates.lng.toFixed(4)}
-                </div>
-                <div className="popup-info">
-                  Confidence:
-                  <span className={`popup-confidence ${getConfidenceLabel(survivor.confidence).toLowerCase()}`}>
-                    {(survivor.confidence * 100).toFixed(1)}% ({getConfidenceLabel(survivor.confidence)})
-                  </span>
-                </div>
-                <div className="popup-info">Detected by: {survivor.uavId}</div>
-                <div className="popup-info">Time: {formatTimestamp(survivor.timestamp)}</div>
-                {survivor.additionalInfo && (
-                  <div className="popup-info">Info: {survivor.additionalInfo}</div>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {/* Survivor Markers disabled for now */}
       </MapContainer>
     </div>
   );

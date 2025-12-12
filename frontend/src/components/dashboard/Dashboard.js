@@ -24,15 +24,29 @@ const Dashboard = () => {
   const safeSurvivors = Array.isArray(survivors) ? survivors : [];
 
   // Format UAVs for the map component
+  // The simulator uses Cartesian coordinates [x, y, z] in meters.
+  // Convert them to approximate lat/lng offsets around the base station (Kolkata area)
   const uavsForMap = useMemo(() => {
-    return Object.values(uavs).map(uav => ({
-      ...uav,
-      location: uav.position ? {
-        lat: uav.position[0] || 0,
-        lng: uav.position[1] || 0,
-        alt: uav.position[2] || 0
-      } : { lat: 0, lng: 0, alt: 0 }
-    }));
+    const baseLat = 22.5726;
+    const baseLng = 88.3639;
+    const metersPerDegLat = 111000; // ~ meters per degree latitude
+    const metersPerDegLng = metersPerDegLat * Math.cos((baseLat * Math.PI) / 180);
+
+    return Object.values(uavs).map(uav => {
+      const [x = 0, y = 0, z = 0] = Array.isArray(uav.position) ? uav.position : [0, 0, 0];
+
+      const lat = baseLat + y / metersPerDegLat; // y axis -> north/south
+      const lng = baseLng + x / metersPerDegLng; // x axis -> east/west
+
+      return {
+        ...uav,
+        location: {
+          lat,
+          lng,
+          alt: z
+        }
+      };
+    });
   }, [uavs]);
 
   // Get the selected UAV status
