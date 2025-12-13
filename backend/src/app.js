@@ -9,6 +9,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
+const fs = require('fs');
 
 // Import routes
 const uavRoutes = require('./routes/uav');
@@ -35,13 +37,13 @@ class Application {
             }
         });
         
-        this.setupMiddleware();
-        this.setupRoutes();
+        this.configureMiddleware();
+        this.configureRoutes();
         this.setupWebSocket();
         this.setupErrorHandling();
     }
     
-    setupMiddleware() {
+    configureMiddleware() {
         // Security middleware
         this.app.use(helmet());
         
@@ -55,7 +57,12 @@ class Application {
         this.app.use(morgan('combined'));
         
         // Body parsing - Increased limits for simulation data
-        this.app.use(express.json({ limit: '50mb' }));
+        this.app.use(express.json({ limit: '10mb' }));
+
+        // Serve uploaded files (including UAV images)
+        const uploadsDir = path.join(__dirname, '..', 'uploads');
+        this.app.use('/uploads', express.static(uploadsDir));
+
         this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
         
         // Make io available to routes
@@ -65,16 +72,40 @@ class Application {
         });
     }
     
-    setupRoutes() {
-        // Health check endpoint
+    configureRoutes() {
+        // Health check route
         this.app.get('/api/health', (req, res) => {
             res.json({ 
-                status: 'healthy', 
+                status: 'ok', 
                 timestamp: new Date().toISOString(),
                 service: 'uav-disaster-response-backend'
             });
         });
-        
+
+        // Admin: list UAV images saved on backend
+        this.app.get('/api/admin/images', (req, res) => {
+            try {
+                const imagesDir = path.join(__dirname, '..', 'uploads', 'uav-images');
+                if (!fs.existsSync(imagesDir)) {
+                    return res.json({ images: [] });
+                }
+
+                const files = fs.readdirSync(imagesDir).filter(f =>
+                    /\.(jpg|jpeg|png)$/i.test(f)
+                );
+
+                const images = files.map(fileName => ({
+                    fileName,
+                    url: `/uploads/uav-images/${fileName}`
+                }));
+
+                res.json({ images });
+            } catch (error) {
+                console.error('Error listing admin images:', error);
+                res.status(500).json({ error: 'Failed to list images' });
+            }
+        });
+
         // API routes
         this.app.use('/api/uav', uavRoutes);
         this.app.use('/api/survivors', survivorRoutes);

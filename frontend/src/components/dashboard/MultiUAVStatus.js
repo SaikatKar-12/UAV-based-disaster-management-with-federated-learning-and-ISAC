@@ -190,6 +190,7 @@ const MultiUAVStatus = ({ uavs: uavsProp, loading: initialLoading = false }) => 
               lastUpdate = new Date().toISOString(),
               connected = false,
               isacMode = 'weak',
+              isMaster = false,
               location = { lat: 0, lng: 0, alt: 0 }
             } = uav;
 
@@ -220,17 +221,32 @@ const MultiUAVStatus = ({ uavs: uavsProp, loading: initialLoading = false }) => 
                     margin: 0, 
                     fontSize: '1rem',
                     fontWeight: '600',
-                    color: isConnected ? '#111827' : '#9ca3af'
+                    color: isConnected ? '#111827' : '#9ca3af',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
                   }}>
-                    {uavId}
+                    <span>{uavId}</span>
                     {!isConnected && (
                       <span style={{ 
                         fontSize: '0.75rem',
                         color: '#ef4444',
-                        marginLeft: '0.5rem',
                         fontWeight: 'normal'
                       }}>
                         (Disconnected)
+                      </span>
+                    )}
+                    {isMaster && (
+                      <span style={{
+                        fontSize: '0.7rem',
+                        padding: '0.1rem 0.35rem',
+                        borderRadius: '999px',
+                        backgroundColor: '#f97316',
+                        color: '#fff',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                      }}>
+                        Master
                       </span>
                     )}
                   </h3>

@@ -74,8 +74,9 @@ const Dashboard = () => {
   useEffect(() => {
     if (!isConnected) return;
 
-    const unsubscribe = subscribe('uav_status', (data) => {
-      console.log('UAV status update:', data);
+    const unsubscribe = subscribe('uav_status', () => {
+      // UAV status updates are handled globally in WebSocketContext
+      // No per-update logging to keep console clean
     });
 
     return () => {
@@ -95,9 +96,6 @@ const Dashboard = () => {
             survivors={safeSurvivors}
             uavStatus={selectedUAVStatus}
             uavs={uavsForMap}
-            onSurvivorClick={(survivor) => {
-              console.log('Survivor clicked:', survivor);
-            }}
           />
         </div>
 

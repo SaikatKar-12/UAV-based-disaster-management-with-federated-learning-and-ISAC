@@ -4,9 +4,53 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
 
 // Store connected UAVs and their data
 const connectedUAVs = new Map();
+
+// Master-slave management
+let currentMasterId = null;
+const MASTER_ROTATION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+let masterRotationInterval = null;
+
+// Helper: get list of currently connected UAV IDs
+const getConnectedUavIds = () => {
+    return Array.from(connectedUAVs.entries())
+        .filter(([, uav]) => uav && uav.socket && uav.socket.connected)
+        .map(([uavId]) => uavId);
+};
+
+// Helper: elect next master in round-robin fashion
+const electNextMaster = (reason = 'rotation') => {
+    const ids = getConnectedUavIds();
+    if (ids.length === 0) {
+        if (currentMasterId) {
+            console.log(`👑 Clearing master (no UAVs connected). Previous master: ${currentMasterId}`);
+        }
+        currentMasterId = null;
+        return null;
+    }
+
+    // Sort for deterministic ordering
+    ids.sort();
+
+    let nextId;
+    if (!currentMasterId || !ids.includes(currentMasterId)) {
+        // No current master or master disconnected: pick first
+        nextId = ids[0];
+    } else {
+        const idx = ids.indexOf(currentMasterId);
+        nextId = ids[(idx + 1) % ids.length];
+    }
+
+    if (nextId !== currentMasterId) {
+        console.log(`👑 New master elected: ${nextId} (reason: ${reason})`);
+    }
+    currentMasterId = nextId;
+    return currentMasterId;
+};
 
 const socketHandler = (io) => {
     console.log('🚀 WebSocket handler initialized');
@@ -15,7 +59,7 @@ const socketHandler = (io) => {
     const cleanupInterval = setInterval(() => {
         const now = Date.now();
         let cleaned = 0;
-        
+
         connectedUAVs.forEach((uav, uavId) => {
             // If no status update in last 30 seconds, consider UAV disconnected
             if (now - uav.lastSeen > 30000) {
@@ -24,11 +68,14 @@ const socketHandler = (io) => {
                     uav.socket.disconnect();
                 }
                 connectedUAVs.delete(uavId);
+
                 cleaned++;
-                
+
                 // Notify all clients about the disconnected UAV
                 io.emit('uav_disconnected', {
                     uavId,
+                    isMaster: currentMasterId === uavId,
+                    currentMasterId,
                     reason: 'timeout',
                     timestamp: new Date().toISOString()
                 });
@@ -39,6 +86,13 @@ const socketHandler = (io) => {
             console.log(`🧹 Cleaned up ${cleaned} inactive UAVs`);
         }
     }, 60000); // Check every minute
+
+    // Start master rotation timer
+    if (!masterRotationInterval) {
+        masterRotationInterval = setInterval(() => {
+            electNextMaster('timer');
+        }, MASTER_ROTATION_INTERVAL_MS);
+    }
 
     io.on('connection', (socket) => {
         console.log(`🔌 New connection: ${socket.id}`);
@@ -69,6 +123,11 @@ const socketHandler = (io) => {
 
                 console.log(`🚁 UAV ${uavId} registered (${socket.id})`);
 
+                // Ensure we have a master after this registration (if none yet)
+                if (!currentMasterId) {
+                    electNextMaster('first_connection');
+                }
+
                 // Acknowledge registration
                 const response = {
                     success: true,
@@ -85,7 +144,9 @@ const socketHandler = (io) => {
                 io.emit('uav_connected', {
                     ...response,
                     position: data.position || [0, 0, 0],
-                    battery: data.battery || 100
+                    battery: data.battery || 100,
+                    isMaster: currentMasterId === uavId,
+                    currentMasterId
                 });
 
                 // Send current list of UAVs to the new connection
@@ -127,6 +188,11 @@ const socketHandler = (io) => {
                 uav.metadata = { ...uav.metadata, ...data.metadata };
             }
 
+            // Ensure there is always a master selected when status updates are flowing
+            if (!currentMasterId) {
+                electNextMaster('status_update');
+            }
+
             // Broadcast status to all clients
             io.emit('uav_status_update', {
                 uavId,
@@ -134,6 +200,8 @@ const socketHandler = (io) => {
                 velocity: uav.velocity,
                 battery: uav.battery,
                 status: uav.status,
+                isMaster: currentMasterId === uavId,
+                currentMasterId,
                 timestamp: new Date().toISOString()
             });
 
@@ -142,13 +210,69 @@ const socketHandler = (io) => {
             }
         });
 
+        // Handle master UAV images for direct frontend display (no backend storage)
+        socket.on('master_image', (data) => {
+            try {
+                if (!uavId) {
+                    throw new Error('UAV not registered');
+                }
+
+                const payload = {
+                    ...data,
+                    uavId,
+                    timestamp: data.timestamp || new Date().toISOString()
+                };
+
+                // Broadcast to all frontend clients
+                io.emit('frontend_master_image', payload);
+            } catch (error) {
+                console.error('Error handling master_image:', error);
+            }
+        });
+
+        // Handle image uploads from UAVs
+        socket.on('uav_image', (data, callback) => {
+            try {
+                if (!uavId) {
+                    throw new Error('UAV not registered');
+                }
+
+                const { fileName = 'image', mimeType = 'image/jpeg', data: base64Data } = data;
+                if (!base64Data) {
+                    throw new Error('No image data provided');
+                }
+
+                const uploadsDir = path.join(__dirname, '..', '..', 'uploads', 'uav-images');
+                fs.mkdirSync(uploadsDir, { recursive: true });
+
+                const safeName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+                const ext = mimeType === 'image/png' ? '.png' : '.jpg';
+                const finalName = `${uavId}-${Date.now()}-${safeName}${safeName.endsWith(ext) ? '' : ext}`;
+                const filePath = path.join(uploadsDir, finalName);
+
+                const buffer = Buffer.from(base64Data, 'base64');
+                fs.writeFileSync(filePath, buffer);
+
+                console.log(`📸 Saved image from ${uavId} to ${filePath}`);
+
+                if (typeof callback === 'function') {
+                    callback({ success: true, filePath });
+                }
+            } catch (error) {
+                console.error('Error handling uav_image:', error);
+                if (typeof callback === 'function') {
+                    callback({ success: false, error: error.message });
+                }
+            }
+        });
+
         // Handle commands from dashboard to UAVs
         socket.on('send_command', (data, callback) => {
             const { uavId: targetUavId, command, params = {} } = data;
-            
+
             if (!targetUavId) {
-                return callback({ 
-                    success: false, 
+                return callback({
+                    success: false,
                     error: 'No UAV ID specified',
                     timestamp: new Date().toISOString()
                 });
@@ -156,15 +280,15 @@ const socketHandler = (io) => {
 
             const uav = connectedUAVs.get(targetUavId);
             if (!uav || !uav.socket || !uav.socket.connected) {
-                return callback({ 
-                    success: false, 
+                return callback({
+                    success: false,
                     error: `UAV ${targetUavId} not connected`,
                     timestamp: new Date().toISOString()
                 });
             }
 
             const commandId = `cmd-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-            
+
             // Send command to UAV
             uav.socket.emit('command', {
                 command,
@@ -178,7 +302,7 @@ const socketHandler = (io) => {
                 if (response.commandId === commandId) {
                     // Clean up the listener
                     socket.off('command_response', onResponse);
-                    
+
                     // Forward the response to the original sender
                     if (typeof callback === 'function') {
                         callback({
@@ -197,8 +321,8 @@ const socketHandler = (io) => {
             const timeout = setTimeout(() => {
                 socket.off('command_response', onResponse);
                 if (typeof callback === 'function') {
-                    callback({ 
-                        success: false, 
+                    callback({
+                        success: false,
                         error: 'Command timeout',
                         commandId,
                         uavId: targetUavId,
@@ -221,15 +345,22 @@ const socketHandler = (io) => {
                 const uav = connectedUAVs.get(uavId);
                 if (uav) {
                     console.log(`🚁 UAV ${uavId} disconnected (${socket.id})`);
-                    
+
                     // Only remove if it's the same socket
                     if (uav.socket && uav.socket.id === socket.id) {
                         connectedUAVs.delete(uavId);
-                        
+
+                        // If the master disconnected, elect a new one
+                        if (currentMasterId === uavId) {
+                            electNextMaster('master_disconnected');
+                        }
+
                         // Notify all clients
-                        io.emit('uav_disconnected', { 
+                        io.emit('uav_disconnected', {
                             uavId,
-                            timestamp: new Date().toISOString() 
+                            isMaster: currentMasterId === uavId,
+                            currentMasterId,
+                            timestamp: new Date().toISOString()
                         });
                     }
                 }
@@ -247,6 +378,10 @@ const socketHandler = (io) => {
     // Clean up on server shutdown
     const cleanup = () => {
         clearInterval(cleanupInterval);
+        if (masterRotationInterval) {
+            clearInterval(masterRotationInterval);
+            masterRotationInterval = null;
+        }
         console.log('🧹 Cleaning up WebSocket handler');
     };
 

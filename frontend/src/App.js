@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import HomePage from './components/home/HomePage';
 import Dashboard from './components/dashboard/Dashboard';
 import UAVDetails from './components/uav/UAVDetails';
+import AdminPage from './components/admin/AdminPage';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { AppProvider } from './context/AppContext';
 import ErrorBoundary from './components/common/ErrorBoundary';
@@ -20,6 +21,13 @@ function App() {
               <WebSocketProvider>
                 <AppProvider>
                   <Dashboard />
+                </AppProvider>
+              </WebSocketProvider>
+            } />
+            <Route path="/admin" element={
+              <WebSocketProvider>
+                <AppProvider>
+                  <AdminPage />
                 </AppProvider>
               </WebSocketProvider>
             } />

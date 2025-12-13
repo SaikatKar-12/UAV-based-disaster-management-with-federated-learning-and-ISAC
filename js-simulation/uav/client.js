@@ -3,6 +3,8 @@ const io = require('socket.io-client');
 const readline = require('readline');
 const { v4: uuidv4 } = require('uuid');
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 
 class UAVClient {
   constructor(options = {}) {
@@ -20,6 +22,7 @@ class UAVClient {
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 3000; // ms
     this.updateInterval = null;
+
     this.commandHandlers = {
       'takeoff': this.handleTakeoff.bind(this),
       'land': this.handleLand.bind(this),
@@ -177,6 +180,55 @@ class UAVClient {
     });
   }
 
+  // Send all images from js-simulation/images to backend
+  async sendImagesToBase() {
+    try {
+      const imagesDir = path.join(__dirname, '..', 'images');
+      if (!fs.existsSync(imagesDir)) {
+        console.warn(`[${this.uavId}] Images directory does not exist: ${imagesDir}`);
+        return { success: false, message: 'Images directory not found' };
+      }
+
+      const files = fs.readdirSync(imagesDir).filter(f =>
+        f.toLowerCase().endsWith('.jpg') ||
+        f.toLowerCase().endsWith('.jpeg') ||
+        f.toLowerCase().endsWith('.png'));
+
+      if (files.length === 0) {
+        console.log(`[${this.uavId}] No image files found in ${imagesDir}`);
+        return { success: false, message: 'No images to send' };
+      }
+
+      console.log(`[${this.uavId}] Sending ${files.length} images to base (frontend)...`);
+
+      for (const file of files) {
+        const fullPath = path.join(imagesDir, file);
+        const buffer = fs.readFileSync(fullPath);
+        const base64Data = buffer.toString('base64');
+
+        const mimeType = file.toLowerCase().endsWith('.png')
+          ? 'image/png'
+          : 'image/jpeg';
+
+        // Send image for direct frontend consumption via backend relay
+        this.socket.emit('master_image', {
+          uavId: this.uavId,
+          fileName: file,
+          mimeType,
+          data: base64Data,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`[${this.uavId}] Sent image: ${file}`);
+      }
+
+      return { success: true, count: files.length };
+    } catch (error) {
+      console.error(`[${this.uavId}] Failed to send images:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   // Command handlers
   handleTakeoff(params) {
     console.log(`[${this.uavId}] Taking off to altitude: ${params.altitude || 10}m`);
@@ -310,6 +362,11 @@ function setupCLI(uav) {
         console.log(`Position: [${uav.position.join(', ')}]`);
         console.log(`Velocity: [${uav.velocity.join(', ')}]`);
         console.log(`Battery: ${uav.battery.toFixed(2)}%`);
+        break;
+        
+      case 'send_images':
+        // Master UAV: send collected images/data to base
+        uav.sendImagesToBase();
         break;
         
       case 'help':

@@ -18,6 +18,7 @@ export const WebSocketProvider = ({ children }) => {
   const [uavs, setUAVs] = useState({});
   const [selectedUAV, setSelectedUAV] = useState(null);
   const [eventListeners, setEventListeners] = useState({});
+  const [adminImages, setAdminImages] = useState([]);
 
   // Function to send commands to UAVs
   const sendCommand = useCallback((uavId, command, params = {}) => {
@@ -79,14 +80,16 @@ export const WebSocketProvider = ({ children }) => {
 
     // Handle UAV connection events
     newSocket.on('uav_connected', (data) => {
-      console.log(`UAV connected: ${data.uavId}`);
+      // console.log(`UAV connected: ${data.uavId}`, data);
       updateUAVStatus(data.uavId, {
         id: data.uavId,
         connected: true,
         status: 'connected',
         position: [0, 0, 0],
         velocity: [0, 0, 0],
-        battery: 100
+        battery: 100,
+        isMaster: !!data.isMaster,
+        currentMasterId: data.currentMasterId || null
       });
       
       // Select the first connected UAV by default
@@ -95,7 +98,7 @@ export const WebSocketProvider = ({ children }) => {
 
     // Handle UAV status updates from backend
     newSocket.on('uav_status_update', (data) => {
-      console.log('Received UAV status update:', data);
+      // console.log('Received UAV status update:', data);
       
       // Process and normalize the status data
       const statusUpdate = {
@@ -109,10 +112,12 @@ export const WebSocketProvider = ({ children }) => {
         dataRate: data.dataRate ?? 0,
         isacMode: data.isacMode || 'weak',
         velocity: data.velocity || [0, 0, 0],
-        lastUpdate: new Date().toISOString()
+        lastUpdate: new Date().toISOString(),
+        isMaster: !!data.isMaster,
+        currentMasterId: data.currentMasterId || null
       };
 
-      console.log('Processed UAV status:', statusUpdate);
+      // console.log('Processed UAV status:', statusUpdate);
       
       // Update the UAV status in state
       setUAVs(prevUAVs => ({
@@ -160,6 +165,18 @@ export const WebSocketProvider = ({ children }) => {
     newSocket.on('reconnect_failed', () => {
       console.error('WebSocket reconnection failed after maximum attempts');
       setConnectionError('Failed to reconnect to server');
+    });
+
+    // Receive master UAV images for Admin view (direct from backend relay)
+    newSocket.on('frontend_master_image', (data) => {
+      // data: { uavId, fileName, mimeType, data (base64), timestamp }
+      setAdminImages(prev => [
+        {
+          ...data,
+          objectUrl: `data:${data.mimeType};base64,${data.data}`
+        },
+        ...prev
+      ]);
     });
 
     setSocket(newSocket);
@@ -220,7 +237,8 @@ export const WebSocketProvider = ({ children }) => {
     setSelectedUAV,
     sendCommand,
     updateUAVStatus,
-    subscribe
+    subscribe,
+    adminImages
   };
 
   return (
