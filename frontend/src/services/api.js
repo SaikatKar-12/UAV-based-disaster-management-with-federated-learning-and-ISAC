@@ -1,8 +1,24 @@
 import axios from 'axios';
 
+// Normalize API base URL so it always points at the backend /api root
+const getBaseApiUrl = () => {
+  const envUrl = process.env.REACT_APP_API_URL;
+
+  // If an env URL is provided, ensure it includes /api
+  if (envUrl) {
+    if (envUrl.endsWith('/api')) {
+      return envUrl;
+    }
+    return `${envUrl.replace(/\/+$/, '')}/api`;
+  }
+
+  // Default to deployed Render backend
+  return 'https://uav-backend.onrender.com/api';
+};
+
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3000/api',
+  baseURL: getBaseApiUrl(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
