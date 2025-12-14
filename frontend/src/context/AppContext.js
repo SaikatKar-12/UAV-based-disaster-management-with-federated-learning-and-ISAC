@@ -247,16 +247,7 @@ export const AppProvider = ({ children }) => {
   // API functions (defined before useEffect)
   const loadSurvivors = async () => {
     try {
-      console.log('🔄 Loading survivors...');
-      dispatch({ type: actionTypes.SET_LOADING, payload: { survivors: true } });
-      const survivors = await api.getSurvivors();
-      console.log('✅ Survivors loaded:', survivors);
-      dispatch({ type: actionTypes.SET_SURVIVORS, payload: survivors });
-      dispatch({ type: actionTypes.SET_ERROR, payload: null }); // Clear error on success
-    } catch (error) {
-      console.error('❌ Error loading survivors:', error);
-
-      // Use sample data when backend is not available
+      // Use sample data only; do not call backend survivors API from frontend
       const sampleSurvivors = [
         {
           id: 'SURV-001',
@@ -297,11 +288,7 @@ export const AppProvider = ({ children }) => {
       ];
 
       dispatch({ type: actionTypes.SET_SURVIVORS, payload: sampleSurvivors });
-
-      // Only show error notification if it's not a network error (backend down)
-      if (!error.message.includes('Network error')) {
-        dispatch({ type: actionTypes.SET_ERROR, payload: error.message });
-      }
+      dispatch({ type: actionTypes.SET_ERROR, payload: null });
     } finally {
       dispatch({ type: actionTypes.SET_LOADING, payload: { survivors: false } });
     }
@@ -532,32 +519,6 @@ export const AppProvider = ({ children }) => {
     }, 3000); // Update every 3 seconds
 
     return () => clearInterval(simulationInterval);
-  }, []);
-
-  // Fetch survivors from backend periodically
-  useEffect(() => {
-    const fetchSurvivors = async () => {
-      try {
-        console.log('🔄 Fetching survivors from backend...');
-        const survivors = await api.getSurvivors();
-        console.log('✅ Survivors fetched from backend:', survivors);
-        
-        if (survivors && survivors.length > 0) {
-          dispatch({ type: actionTypes.SET_SURVIVORS, payload: survivors });
-        }
-      } catch (error) {
-        console.log('❌ Backend not available, using sample data');
-        // Keep existing sample data if backend is not available
-      }
-    };
-
-    // Fetch immediately
-    fetchSurvivors();
-    
-    // Then fetch every 10 seconds
-    const survivorInterval = setInterval(fetchSurvivors, 10000);
-
-    return () => clearInterval(survivorInterval);
   }, []);
 
   // WebSocket event subscriptions
