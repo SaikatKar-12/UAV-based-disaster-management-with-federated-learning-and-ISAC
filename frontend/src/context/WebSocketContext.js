@@ -49,7 +49,7 @@ export const WebSocketProvider = ({ children }) => {
 
   useEffect(() => {
     // Initialize socket connection
-    const newSocket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000', {
+    const newSocket = io(process.env.REACT_APP_BACKEND_URL || 'https://uav-backend.onrender.com', {
       transports: ['websocket', 'polling'],
       timeout: 5000,
       reconnection: true,

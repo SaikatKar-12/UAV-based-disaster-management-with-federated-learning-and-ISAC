@@ -9,7 +9,7 @@ const path = require('path');
 class UAVClient {
   constructor(options = {}) {
     this.uavId = options.uavId || `uav-${uuidv4().substring(0, 6)}`;
-    this.serverUrl = options.serverUrl || 'http://localhost:3000';
+    this.serverUrl = options.serverUrl || 'https://uav-backend.onrender.com';
     this.position = options.position || [0, 0, 0]; // [x, y, z]
     this.velocity = options.velocity || [0, 0, 0]; // [vx, vy, vz]
     this.targetPosition = null; // Target position for movement
