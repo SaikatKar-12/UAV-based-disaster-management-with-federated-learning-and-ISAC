@@ -30,9 +30,6 @@ let MapContainer, TileLayer, Marker, Popup;
 try {
   const leaflet = require('react-leaflet');
   ({ MapContainer, TileLayer, Marker, Popup } = leaflet);
-  // Re-import L to ensure it's available
-  L = require('leaflet');
-  require('leaflet/dist/leaflet.css');
 } catch (error) {
   console.warn('Leaflet not available, using fallback map component');
   // Provide fallback components in development
