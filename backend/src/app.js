@@ -29,11 +29,14 @@ const socketHandler = require('./websocket/socketHandler');
 class Application {
     constructor() {
         this.app = express();
+
+        // Create HTTP server and WebSocket server with permissive CORS
         this.server = createServer(this.app);
         this.io = new Server(this.server, {
             cors: {
-                origin: process.env.FRONTEND_URL || "http://localhost:3001",
-                methods: ["GET", "POST"]
+                origin: '*',
+                methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                credentials: false
             }
         });
         
@@ -44,13 +47,16 @@ class Application {
     }
     
     configureMiddleware() {
+
         // Security middleware
         this.app.use(helmet());
         
-        // CORS configuration
+        // CORS configuration for HTTP API - allow all origins
         this.app.use(cors({
-            origin: process.env.FRONTEND_URL || "http://localhost:3001",
-            credentials: true
+            origin: '*',
+            methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allowedHeaders: ["Content-Type", "Authorization"],
+            credentials: false
         }));
         
         // Logging
