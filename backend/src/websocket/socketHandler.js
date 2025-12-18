@@ -15,6 +15,16 @@ let currentMasterId = null;
 const MASTER_ROTATION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 let masterRotationInterval = null;
 
+// Scoring weights for master election
+const WEIGHTS = {
+    SNR: 0.4,        // w1: Signal-to-Noise Ratio weight
+    BATTERY: 0.3,    // w2: Battery level weight  
+    DISTANCE: 0.3    // w3: Distance to center weight
+};
+
+// Center point for distance calculations (default: Kolkata)
+const CENTER_POINT = { lat: 22.5726, lng: 88.3639 };
+
 // Helper: get list of currently connected UAV IDs
 const getConnectedUavIds = () => {
     return Array.from(connectedUAVs.entries())
@@ -22,7 +32,38 @@ const getConnectedUavIds = () => {
         .map(([uavId]) => uavId);
 };
 
-// Helper: elect next master in round-robin fashion
+// Helper: calculate UAV score for master election
+const calculateUAVScore = (uav) => {
+    if (!uav) return 0;
+    
+    // Extract UAV metrics
+    const snr = uav.signalStrength || 50; // Default 50% if not available
+    const battery = uav.battery || 50;    // Default 50% if not available
+    const position = uav.position || [0, 0, 0];
+    
+    // Calculate distance to center (simplified: use x,y as lat/lng approximation)
+    const distance = Math.sqrt(
+        Math.pow(position[0] - CENTER_POINT.lat, 2) + 
+        Math.pow(position[1] - CENTER_POINT.lng, 2)
+    );
+    const distanceScore = distance > 0 ? (1 / distance) : 1;
+    
+    // Normalize values to 0-1 range
+    const normalizedSNR = Math.min(100, Math.max(0, snr)) / 100;
+    const normalizedBattery = Math.min(100, Math.max(0, battery)) / 100;
+    const normalizedDistance = Math.min(1, distanceScore); // Cap at 1
+    
+    // Calculate weighted score
+    const score = (
+        WEIGHTS.SNR * normalizedSNR +
+        WEIGHTS.BATTERY * normalizedBattery + 
+        WEIGHTS.DISTANCE * normalizedDistance
+    );
+    
+    return Math.round(score * 100) / 100; // Round to 2 decimal places
+};
+
+// Helper: elect master based on highest score
 const electNextMaster = (reason = 'rotation') => {
     const ids = getConnectedUavIds();
     if (ids.length === 0) {
@@ -33,21 +74,25 @@ const electNextMaster = (reason = 'rotation') => {
         return null;
     }
 
-    // Sort for deterministic ordering
-    ids.sort();
-
-    let nextId;
-    if (!currentMasterId || !ids.includes(currentMasterId)) {
-        // No current master or master disconnected: pick first
-        nextId = ids[0];
-    } else {
-        const idx = ids.indexOf(currentMasterId);
-        nextId = ids[(idx + 1) % ids.length];
-    }
-
+    // Calculate scores for all UAVs
+    const uavScores = [];
+    ids.forEach(uavId => {
+        const uav = connectedUAVs.get(uavId);
+        const score = calculateUAVScore(uav);
+        uavScores.push({ uavId, score, snr: uav?.signalStrength, battery: uav?.battery });
+    });
+    
+    // Sort by score (highest first)
+    uavScores.sort((a, b) => b.score - a.score);
+    
+    const bestUAV = uavScores[0];
+    const nextId = bestUAV.uavId;
+    
     if (nextId !== currentMasterId) {
         console.log(`👑 New master elected: ${nextId} (reason: ${reason})`);
+        console.log(`📊 Master scores: ${uavScores.map(u => `${u.uavId}: ${u.score} (SNR:${u.snr}%, Bat:${u.battery}%)`).join(', ')}`);
     }
+    
     currentMasterId = nextId;
     return currentMasterId;
 };
