@@ -47,8 +47,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:3000",
-  "devDependencies": {
-    "baseline-browser-mapping": "^2.9.7"
-  }
+  "proxy": "http://localhost:3000"
 }

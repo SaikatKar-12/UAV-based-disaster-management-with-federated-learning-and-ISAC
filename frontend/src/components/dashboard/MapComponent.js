@@ -170,21 +170,6 @@ const MapComponent = ({ survivors, uavStatus, uavs, onSurvivorClick, onUAVSelect
     return '#dc2626'; // Red for low confidence
   };
 
-  const getConfidenceLabel = (confidence) => {
-    if (confidence >= 0.8) return 'High';
-    if (confidence >= 0.6) return 'Medium';
-    return 'Low';
-  };
-
-  const getSurvivorIcon = (survivor) => {
-    const color = survivor.status === 'rescued' ? '#22c55e' : getConfidenceColor(survivor.confidence);
-    const size = survivor.confidence >= 0.8 ? [24, 24] : [20, 20];
-    return createCustomIcon(color, size);
-  };
-
-  const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString();
-  };
 
   const handleUAVClick = (uavId) => {
     if (onUAVSelect) {
